@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import create_engine, func
 
 from flask import Flask, jsonify
+import datetime as dt
 
 
 #################################################
@@ -42,8 +43,8 @@ def welcome():
         f"/api/v1.0/precipitation<br/>"
         f"/api/v1.0/stations<br/>"
         f"/api/v1.0/tobs<br/>"
-        f"/api/v1.0/temp/start<br/>"
-        f"/api/v1.0/temp/start/end"
+        f"/api/v1.0/start<br/>"
+        f"/api/v1.0/start/end"
     )
 
 # 1. Define precipitation route
@@ -93,19 +94,25 @@ def stations():
 # 3. Define temperature route
 @app.route("/api/v1.0/tobs")
 def tobs():
+    session = Session(engine)
 
     #Define the most active station
-    active_stn = session.query(station.station).order_by(func.count(station.station).desc()).\
-        group_by(station.station).first()
+    # active_stn = session.query(station.station).order_by(func.count(station.station).desc()).\
+    #     group_by(station.station).first()
     
+    # print(active_stn)
+    # Need to make sure the above returned value is a string.  If it is a list, then 
+    #  active_stn = session.query(station.station).order_by(func.count(station.station).desc()).\
+    #     group_by(station.station).first().(0) -- as the first value of the list
+
     """Return the temperature data for the last year"""
     # Calculate the date 1 year ago from last date in database
     prev_year = dt.date(2017, 8, 23) - dt.timedelta(days=365)
-​
+
     # Query for the date and precipitation for the last year
-    temp = session.query(measurement.date, measurement.tods).\
-        filter(measurement.date >= prev_year, measurement.station == active_stn).all()
-​
+    temp = session.query(measurement.tobs).\
+        filter(measurement.date >= prev_year).filter(measurement.station == 'USC00519523').all()
+
     session.close()
     
     # Convert list of tuples into normal list
@@ -113,6 +120,34 @@ def tobs():
     
     return jsonify(all_temp)
 
+
+@app.route("/api/v1.0/<start>")
+@app.route("/api/v1.0/<start>/<end>")
+def start_end(start=None,end=None):
+    """Fetch the start and end date to calculate min, max and average of temperature
+        for the period."""
+
+    session = Session(engine)
+
+    # Covert the date value to number? and then match with 
+    start = dt.datetime.strptime(start, "%Y-%m-%d")
+    
+    if end :
+        end = dt.datetime.strptime(end, "%Y-%m-%d")
+    else :
+        end = dt.datetime.today()
+
+    # Query for data in the start and end period 
+    temperature = session.query(func.min(measurement.tobs), func.avg(measurement.tobs), func.max(measurement.tobs)).\
+        filter(measurement.date >= start).filter(measurement.date <= end).all()
+
+    # Calculate the min, max and avg temperature
+
+    session.close()
+    # Dict with date as the key and prcp as the value
+    all_temp2 = list(np.ravel(temperature))
+    
+    return jsonify(all_temp2)
 
 if __name__ == "__main__":
     app.run(debug=True)
